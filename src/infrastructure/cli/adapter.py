@@ -14,10 +14,11 @@ REFACTORING FROM V1:
 """
 
 import logging
-from typing import Dict, List, Any, Optional
-
+from typing import Dict, List, Any, Optional, Union
 from src.domain.chat.service import ChatService
+from src.domain.chat.models import UserChatRequest, ChatResponse
 from src.domain.mcp.client import MCPClient
+from src.infrastructure.llm.models import LLMResponse
 from src.shared.exceptions import ToolExecutionError
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ class CliAdapter:
     # Main Chat Method
     # ========================================================================
 
-    async def process_message(self, user_input: str) -> str:
+    async def process_message(self, message: str) -> ChatResponse:
         """
         Process a user message from CLI.
 
@@ -67,18 +68,28 @@ class CliAdapter:
 
         Returns:
             AI response string
+            :param message:
         """
+
         try:
+            user_query: UserChatRequest = UserChatRequest(
+                query=message,
+                max_iterations=5,
+                temperature=0.4,
+                max_tokens=10000,
+            )
+
             # Check for resource mentions (@)
-            if "@" in user_input:
-                user_input = await self._extract_resources(user_input)
+            if "@" in user_query.query:
+                user_query.query = await self._extract_resources(user_query.query)
 
             # Check for prompt commands (/)
-            if user_input.startswith("/"):
-                return await self._handle_prompt_command(user_input)
+            if user_query.query.startswith("/"):
+                return await self._handle_prompt_command(user_query.query)
 
             # Regular chat processing
-            return await self.chat_service.process_query(user_input)
+
+            return await self.chat_service.process_query(user_query)
 
         except Exception as e:
             logger.error(f"Error processing CLI message: {e}")
@@ -172,7 +183,7 @@ class CliAdapter:
     # Prompt Commands (/ commands)
     # ========================================================================
 
-    async def _handle_prompt_command(self, command: str) -> str:
+    async def _handle_prompt_command(self, command: str) -> ChatResponse:
         """
         Handle / prompt commands.
 

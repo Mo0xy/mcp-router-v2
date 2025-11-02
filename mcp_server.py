@@ -30,8 +30,12 @@ from src.infrastructure.database.connection import get_db_manager
 from src.infrastructure.database.repository import DatabaseRepository
 from src.shared.exceptions import DatabaseError
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging to stderr (critical for MCP protocol)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stderr  # MCP requires stdout only for JSONRPC messages
+)
 logger = logging.getLogger(__name__)
 
 # Initialize FastMCP server
@@ -129,8 +133,9 @@ async def generate_interview_questions(
     # ========================================================================
 
     try:
-        print(f"{Fore.CYAN}📊 Fetching data from database...")
+        logger.info(" Fetching data from database...")
         user_data = db_repo.get_user_data_by_email(email)
+        logger.info(f"user data: {user_data}")
 
         if not user_data:
             error_msg = f"No data found for email: {email}"
@@ -138,10 +143,10 @@ async def generate_interview_questions(
             return error_msg
 
         # Extract fields
-        cv_content = user_data.cv_content or "No CV content available"
-        job_description = user_data.jobdescription or "No job description available"
-        name = user_data.name
-        surname = user_data.surname
+        cv_content = user_data.get('cv_content') or "No CV content available"
+        job_description = user_data.get('job_description') or "No job description available"
+        name = user_data.get('name')
+        surname = user_data.get('surname')
 
         logger.info(f"✓ Data retrieved for {name} {surname}")
 
@@ -210,7 +215,7 @@ Generate the questions now.
     # ========================================================================
 
     try:
-        print(f"{Fore.CYAN}🤖 Generating questions with AI...")
+        logger.info(" Generating questions with AI...")
 
         result = await context.session.create_message(
             messages=[
@@ -249,16 +254,16 @@ if __name__ == "__main__":
         load_dotenv()
 
         # Initialize database
-        #print(f"{Fore.CYAN}Initializing MCP Server...")
+        logger.info("Initializing MCP Server...")
         initialize_database()
 
         # Determine running mode
         is_docker = os.getenv("DOCKER", "0") == "1"
         mode = "Docker" if is_docker else "Local"
 
-        #print(f"{Fore.GREEN}✓ MCP Server initialized in {mode} mode")
-        #print(f"{Fore.GREEN}✓ Available tools: generate_interview_questions")
-        #print(f"{Fore.CYAN}Starting MCP server on stdio...")
+        logger.info(f"✓ MCP Server initialized in {mode} mode")
+        logger.info("✓ Available tools: generate_interview_questions")
+        logger.info("Starting MCP server on stdio...")
 
         # Start server
         # MCP uses stdio for communication

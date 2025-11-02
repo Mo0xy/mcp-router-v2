@@ -3,10 +3,17 @@ Data models for LLM communication.
 
 This module defines Pydantic models for type-safe LLM interactions.
 """
-
+import logging
+import sys
 from typing import List, Dict, Any, Optional, Literal, Union
 from pydantic import BaseModel, Field
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stderr  # MCP requires stdout only for JSONRPC messages
+)
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Content Models
@@ -110,7 +117,7 @@ class LLMResponse(BaseModel):
 
     content: List[ContentBlock]
     stop_reason: Optional[str] = None
-    usage: Optional[Dict[str, int]] = None
+    usage: Optional[Dict[str, Any]] = None
     model: Optional[str] = None
 
     def get_text(self) -> str:
@@ -126,6 +133,11 @@ class LLMResponse(BaseModel):
     def get_tool_calls(self) -> List[ToolCall]:
         """Extract all tool calls from response."""
         tool_calls = []
+
+        logger.info(f"content: {self.content}")
+        logger.info(f"stop_reason: {self.stop_reason}")
+
+        # Caso 1: Tool calls nel content (formato Anthropic standard)
         for block in self.content:
             if isinstance(block, ToolUseContent):
                 tool_calls.append(
@@ -139,6 +151,30 @@ class LLMResponse(BaseModel):
                         input=block.get("input", {}),
                     )
                 )
+
+        # Caso 2: Se stop_reason è 'tool_use' ma non abbiamo trovato tool calls
+        # potrebbe essere in un campo separato (controlla self.__dict__)
+        if not tool_calls and self.stop_reason == "tool_use":
+            logger.warning(
+                f"stop_reason is 'tool_use' but no tool calls found in content. "
+                f"Response attributes: {list(self.__dict__.keys())}"
+            )
+
+            # Prova a cercare in attributi alternativi
+            if hasattr(self, 'tool_calls'):
+                logger.info(f"Found tool_calls attribute: {self.tool_calls}")
+                # Converti dal formato trovato
+                for tc in self.tool_calls:
+                    if isinstance(tc, dict):
+                        tool_calls.append(
+                            ToolCall(
+                                id=tc.get("id", ""),
+                                name=tc.get("function", {}).get("name", ""),
+                                input=tc.get("function", {}).get("arguments", {}),
+                            )
+                        )
+
+        logger.info(f"Extracted {len(tool_calls)} tool calls")
         return tool_calls
 
     def has_tool_calls(self) -> bool:

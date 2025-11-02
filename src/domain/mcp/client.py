@@ -92,8 +92,6 @@ class MCPClient:
     Add this timeout logic to your src/domain/mcp/client.py
     """
 
-    # In src/domain/mcp/client.py, modifica il metodo connect():
-
     async def connect(self) -> None:
         """
         Connect to the MCP server.

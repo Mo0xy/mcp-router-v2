@@ -18,16 +18,9 @@ REFACTORING FROM V1:
 """
 
 import logging
-from typing import Optional, List, Dict, Any, Tuple
-from psycopg2.extras import RealDictRow
+from typing import Optional, Dict, Any, Tuple
 
 from src.infrastructure.database.connection import DatabaseConnectionManager
-from src.infrastructure.database.models import (
-    CandidateDB,
-    JobDB,
-    CandidateApplicationDB,
-    UserDataByEmail,
-)
 from src.shared.exceptions import DatabaseError
 
 logger = logging.getLogger(__name__)
@@ -62,7 +55,6 @@ class DatabaseRepository:
             self,
             query: str,
             params: Tuple = (),
-            fetch_one: bool = True,
     ) -> Optional[Dict[str, Any]]:
         """
         Execute a generic database query.
@@ -70,7 +62,6 @@ class DatabaseRepository:
         Args:
             query: SQL query string
             params: Query parameters tuple
-            fetch_one: If True, fetch single row; if False, return rowcount
 
         Returns:
             Query result as dict (for SELECT) or rowcount (for INSERT/UPDATE/DELETE)
@@ -84,12 +75,8 @@ class DatabaseRepository:
 
                 # For SELECT queries
                 if query.strip().lower().startswith("select"):
-                    if fetch_one:
-                        result = cursor.fetchone()
-                        return dict(result) if result else None
-                    else:
-                        results = cursor.fetchall()
-                        return [dict(row) for row in results]
+                    result = cursor.fetchone()
+                    return dict(result) if result else None
 
                 # For INSERT/UPDATE/DELETE
                 return {"rowcount": cursor.rowcount}
@@ -104,18 +91,19 @@ class DatabaseRepository:
     # User Data Queries
     # ========================================================================
 
-    def get_user_data_by_email(self, email: str) -> Optional[UserDataByEmail]:
+    def get_user_data_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """
-        Get complete user data by email address.
+        Get user data by email address.
 
-        This method retrieves aggregated data from the candidate_applications_view,
+        This method retrieves data from the candidate_applications_view,
         which combines information from candidate, job, and application tables.
 
         Args:
             email: User email address
 
         Returns:
-            UserDataByEmail model instance or None if not found
+            Dict with keys: name, surname, cv_content, jobdescription
+            Returns None if not found or empty dict on error
 
         Raises:
             DatabaseError: If query fails
@@ -123,269 +111,92 @@ class DatabaseRepository:
         Example:
             user_data = repo.get_user_data_by_email("mario.rossi@example.com")
             if user_data:
-                print(f"Name: {user_data.name} {user_data.surname}")
-                print(f"CV: {user_data.cv_content[:100]}...")
+                print(f"Name: {user_data['name']} {user_data['surname']}")
+                print(f"CV: {user_data['cv_content'][:100]}...")
         """
-        query = """
-            SELECT 
-                name,
-                surname,
-                cv_content,
-                jobdescription,
-                email,
-                phone,
-                candidate_id,
-                job_id
-            FROM candidate_applications_view
-            WHERE email = %s
-            LIMIT 1
-        """
+        query = "SELECT name, surname, cv_content, jobdescription FROM candidate_applications_view WHERE email = %s"
 
         try:
-            result = self.execute_query(query, (email,), fetch_one=True)
+            result = self.execute_query(query, (email,))
 
             if result:
                 logger.info(f"Found user data for email: {email}")
-                return UserDataByEmail.from_db_row(result)
+                return result
 
             logger.warning(f"No user data found for email: {email}")
-            return None
+            return {}
 
         except Exception as e:
             logger.error(f"Failed to get user data for {email}: {e}")
-            raise DatabaseError(f"Failed to retrieve user data: {e}") from e
+            return {}
 
     # ========================================================================
     # Candidate Queries
     # ========================================================================
 
-    def get_candidate_by_id(self, candidate_id: str) -> Optional[CandidateDB]:
+    def get_candidate_data(self, candidate_id: str) -> Optional[Dict[str, str]]:
         """
-        Get candidate data by ID.
+        Get candidate name and surname by ID.
+
+        This retrieves basic candidate information from the database.
 
         Args:
             candidate_id: Candidate ID (e.g., 'C01')
 
         Returns:
-            CandidateDB model or None if not found
+            Dict with keys: name, surname
+            Returns empty dict on error
+
+        Example:
+            candidate = repo.get_candidate_data("C01")
+            if candidate:
+                print(f"Candidate: {candidate['name']} {candidate['surname']}")
         """
-        query = """
-            SELECT id, name, surname, email, phone, created_at, updated_at
-            FROM candidates
-            WHERE id = %s
-        """
+        query = "SELECT name, surname FROM candidate_applications_view WHERE candidate_id = %s"
 
         try:
-            result = self.execute_query(query, (candidate_id,), fetch_one=True)
-            return CandidateDB(**result) if result else None
-        except Exception as e:
-            logger.error(f"Failed to get candidate {candidate_id}: {e}")
-            raise DatabaseError(f"Failed to retrieve candidate: {e}") from e
-
-    def get_candidate_data(self, candidate_id: str) -> Optional[Dict[str, str]]:
-        """
-        Get candidate name and surname by ID.
-
-        This is a lighter query for cases where only basic info is needed.
-
-        Args:
-            candidate_id: Candidate ID
-
-        Returns:
-            Dict with 'name' and 'surname' keys, or None
-        """
-        query = """
-            SELECT name, surname 
-            FROM candidate_applications_view 
-            WHERE candidate_id = %s
-            LIMIT 1
-        """
-
-        try:
-            result = self.execute_query(query, (candidate_id,), fetch_one=True)
-            return result
+            result = self.execute_query(query, (candidate_id,))
+            if result:
+                logger.info(f"Found candidate data for ID: {candidate_id}")
+            else:
+                logger.warning(f"No candidate found for ID: {candidate_id}")
+            return result if result else {}
         except Exception as e:
             logger.error(f"Failed to get candidate data for {candidate_id}: {e}")
-            raise DatabaseError(f"Failed to retrieve candidate data: {e}") from e
+            return {}
 
     # ========================================================================
     # Job Queries
     # ========================================================================
-
-    def get_job_by_id(self, job_id: str) -> Optional[JobDB]:
-        """
-        Get job data by ID.
-
-        Args:
-            job_id: Job ID (e.g., 'J001')
-
-        Returns:
-            JobDB model or None if not found
-        """
-        query = """
-            SELECT id, title, description, requirements, created_at, updated_at
-            FROM jobs
-            WHERE id = %s
-        """
-
-        try:
-            result = self.execute_query(query, (job_id,), fetch_one=True)
-            return JobDB(**result) if result else None
-        except Exception as e:
-            logger.error(f"Failed to get job {job_id}: {e}")
-            raise DatabaseError(f"Failed to retrieve job: {e}") from e
 
     def get_job_requirements(self, job_id: str) -> Optional[Dict[str, str]]:
         """
         Get job description by ID.
 
         Args:
-            job_id: Job ID
+            job_id: Job ID (e.g., 'J001')
 
         Returns:
-            Dict with 'jobdescription' key, or None
+            Dict with key: jobdescription
+            Returns empty dict on error
+
+        Example:
+            job = repo.get_job_requirements("J001")
+            if job:
+                print(f"Job Description: {job['jobdescription']}")
         """
-        query = """
-            SELECT jobdescription 
-            FROM candidate_applications_view 
-            WHERE job_id = %s
-            LIMIT 1
-        """
+        query = "SELECT jobdescription FROM candidate_applications_view WHERE job_id = %s"
 
         try:
-            result = self.execute_query(query, (job_id,), fetch_one=True)
-            return result
+            result = self.execute_query(query, (job_id,))
+            if result:
+                logger.info(f"Found job requirements for ID: {job_id}")
+            else:
+                logger.warning(f"No job found for ID: {job_id}")
+            return result if result else {}
         except Exception as e:
             logger.error(f"Failed to get job requirements for {job_id}: {e}")
-            raise DatabaseError(f"Failed to retrieve job requirements: {e}") from e
-
-    # ========================================================================
-    # Application Queries
-    # ========================================================================
-
-    def get_applications_by_candidate(
-            self, candidate_id: str
-    ) -> List[CandidateApplicationDB]:
-        """
-        Get all applications for a candidate.
-
-        Args:
-            candidate_id: Candidate ID
-
-        Returns:
-            List of CandidateApplicationDB models
-        """
-        query = """
-            SELECT 
-                candidate_id, 
-                job_id, 
-                cv_filename, 
-                cv_content,
-                application_date,
-                status
-            FROM candidate_applications
-            WHERE candidate_id = %s
-            ORDER BY application_date DESC
-        """
-
-        try:
-            results = self.execute_query(query, (candidate_id,), fetch_one=False)
-            return [CandidateApplicationDB(**row) for row in results] if results else []
-        except Exception as e:
-            logger.error(f"Failed to get applications for {candidate_id}: {e}")
-            raise DatabaseError(f"Failed to retrieve applications: {e}") from e
-
-    def get_applications_by_job(self, job_id: str) -> List[CandidateApplicationDB]:
-        """
-        Get all applications for a job.
-
-        Args:
-            job_id: Job ID
-
-        Returns:
-            List of CandidateApplicationDB models
-        """
-        query = """
-            SELECT 
-                candidate_id, 
-                job_id, 
-                cv_filename, 
-                cv_content,
-                application_date,
-                status
-            FROM candidate_applications
-            WHERE job_id = %s
-            ORDER BY application_date DESC
-        """
-
-        try:
-            results = self.execute_query(query, (job_id,), fetch_one=False)
-            return [CandidateApplicationDB(**row) for row in results] if results else []
-        except Exception as e:
-            logger.error(f"Failed to get applications for job {job_id}: {e}")
-            raise DatabaseError(f"Failed to retrieve applications: {e}") from e
-
-    # ========================================================================
-    # Write Operations (for future use)
-    # ========================================================================
-
-    def insert_candidate(self, candidate: CandidateDB) -> bool:
-        """
-        Insert a new candidate into the database.
-
-        Args:
-            candidate: CandidateDB model instance
-
-        Returns:
-            True if successful
-        """
-        query = """
-            INSERT INTO candidates (id, name, surname, email, phone)
-            VALUES (%s, %s, %s, %s, %s)
-        """
-
-        try:
-            self.execute_query(
-                query,
-                (
-                    candidate.id,
-                    candidate.name,
-                    candidate.surname,
-                    candidate.email,
-                    candidate.phone,
-                ),
-                fetch_one=False,
-            )
-            logger.info(f"Inserted candidate: {candidate.id}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to insert candidate: {e}")
-            raise DatabaseError(f"Failed to insert candidate: {e}") from e
-
-    def update_candidate_email(self, candidate_id: str, new_email: str) -> bool:
-        """
-        Update candidate email.
-
-        Args:
-            candidate_id: Candidate ID
-            new_email: New email address
-
-        Returns:
-            True if successful
-        """
-        query = """
-            UPDATE candidates
-            SET email = %s, updated_at = NOW()
-            WHERE id = %s
-        """
-
-        try:
-            result = self.execute_query(query, (new_email, candidate_id), fetch_one=False)
-            logger.info(f"Updated email for candidate {candidate_id}")
-            return result["rowcount"] > 0
-        except Exception as e:
-            logger.error(f"Failed to update candidate email: {e}")
-            raise DatabaseError(f"Failed to update candidate: {e}") from e
+            return {}
 
     # ========================================================================
     # Health Check
