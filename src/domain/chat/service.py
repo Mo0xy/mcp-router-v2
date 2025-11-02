@@ -144,12 +144,14 @@ class ChatService:
 
                 # Extract text response
                 text_response = llm_response.get_text()
+                logger.info(f"getting llm response..\n{llm_response}")
                 if text_response:
                     final_text_response = text_response
-                    logger.debug(f"LLM text response: {text_response[:100]}...")
+                    logger.info(f"LLM text response: {text_response[:100]}...")
 
                 # Check stop reason
-                logger.debug(f"Stop reason: {llm_response.stop_reason}")
+                logger.info(f"Stop reason: {llm_response.stop_reason}")
+                logger.info(f"has tool calls: {llm_response.has_tool_calls()}")
 
                 # Handle tool calls
                 if llm_response.has_tool_calls():

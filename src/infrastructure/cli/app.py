@@ -13,10 +13,10 @@ REFACTORING FROM V1:
 
 import asyncio
 import sys
-from typing import Optional
+from typing import Optional, Union
 from colorama import Fore, init as colorama_init
-
 from src.infrastructure.cli.adapter import CliAdapter
+from src.infrastructure.llm.models import LLMResponse
 
 # Initialize colorama for cross-platform colored output
 colorama_init(autoreset=True)
@@ -176,7 +176,7 @@ class CliApp:
 
         return False
 
-    async def _process_message(self, user_input: str) -> None:
+    async def _process_message(self, message: Union[str, LLMResponse]) -> None:
         """
         Process a user message.
 
@@ -187,11 +187,11 @@ class CliApp:
 
         try:
             # Process message through adapter
-            response = await self.cli_adapter.process_message(user_input)
+            response = await self.cli_adapter.process_message(message)
 
             # Print response
-            print(f"{Fore.LIGHTMAGENTA_EX}{response}")
-            print()
+            print(f"{Fore.LIGHTMAGENTA_EX}{response.response}")
+
 
         except Exception as e:
             print(f"{Fore.RED}Error: {e}")

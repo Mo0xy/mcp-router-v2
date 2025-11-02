@@ -7,7 +7,8 @@ for converting between different message formats (internal, OpenRouter, MCP, etc
 BEFORE: Conversion logic was scattered across multiple files (openrouter.py, chat.py)
 AFTER: All conversion logic is centralized here
 """
-
+import logging
+import sys
 from typing import List, Dict, Any, Union, Optional
 from src.infrastructure.llm.models import (
     Message,
@@ -26,6 +27,13 @@ from src.shared.constants import (
     CONTENT_TYPE_TOOL_USE,
     CONTENT_TYPE_TOOL_RESULT,
 )
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stderr  # MCP requires stdout only for JSONRPC messages
+)
+logger = logging.getLogger(__name__)
 
 
 class MessageConverter:
@@ -175,6 +183,30 @@ class MessageConverter:
                 content_blocks = content
             else:
                 content_blocks = [{"type": CONTENT_TYPE_TEXT, "text": str(content)}]
+
+            # AGGIUNGI QUESTA PARTE PER ESTRARRE LE TOOL CALLS
+            tool_calls = message.get("tool_calls", [])
+            if tool_calls:
+                for tool_call in tool_calls:
+                    # OpenRouter/OpenAI format: tool_call.function.name, tool_call.function.arguments
+                    function_data = tool_call.get("function", {})
+                    arguments = function_data.get("arguments", "{}")
+
+                    # Parse arguments if string
+                    if isinstance(arguments, str):
+                        import json
+                        try:
+                            arguments = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            arguments = {}
+
+                    # Convert to Anthropic format
+                    content_blocks.append({
+                        "type": CONTENT_TYPE_TOOL_USE,
+                        "id": tool_call.get("id", ""),
+                        "name": function_data.get("name", ""),
+                        "input": arguments
+                    })
 
             # Extract usage info
             usage = response_data.get("usage", {})

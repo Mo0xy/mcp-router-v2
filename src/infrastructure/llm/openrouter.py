@@ -15,7 +15,9 @@ IMPROVEMENTS OVER ORIGINAL:
 """
 
 import asyncio
+import logging
 import httpx
+import sys
 from typing import List, Dict, Any, Optional
 from src.infrastructure.llm.base import LLMProvider
 from src.infrastructure.llm.models import LLMResponse, ToolSchema
@@ -33,6 +35,13 @@ from src.shared.constants import (
     RETRY_BACKOFF_FACTOR,
     RETRY_STATUS_CODES,
 )
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stderr  # MCP requires stdout only for JSONRPC messages
+)
+logger = logging.getLogger(__name__)
 
 
 class OpenRouterClient(LLMProvider):
@@ -128,6 +137,7 @@ class OpenRouterClient(LLMProvider):
         }
 
         # Add tools if provided
+        logger.info("checking tools..")
         if tools:
             payload["tools"] = [self._tool_to_openrouter_format(tool) for tool in tools]
 
@@ -159,7 +169,10 @@ class OpenRouterClient(LLMProvider):
 
                 # Parse response using MessageConverter
                 response_data = response.json()
-                return MessageConverter.from_openrouter_response(response_data)
+
+                response_data = MessageConverter.from_openrouter_response(response_data)
+                logger.info(f"response_data:{response_data}")
+                return response_data
 
         except httpx.TimeoutException as e:
             raise LLMTimeoutError("Request to OpenRouter timed out") from e
@@ -247,16 +260,23 @@ class OpenRouterClient(LLMProvider):
     # Helper Methods
     # ========================================================================
 
-    def _tool_to_openrouter_format(self, tool: ToolSchema) -> Dict[str, Any]:
-        """
-        Convert ToolSchema to OpenRouter tool format.
+    def _tool_to_openrouter_format(self, tool) -> Dict[str, Any]:
+        # Se è già un dict con formato OpenRouter corretto, restituiscilo
+        if isinstance(tool, dict):
+            if "type" in tool and "function" in tool:
+                return tool
 
-        Args:
-            tool: Tool schema in internal format
+            # Altrimenti è un dict flat, convertilo
+            return {
+                "type": "function",
+                "function": {
+                    "name": tool.get("name", ""),
+                    "description": tool.get("description", ""),
+                    "parameters": tool.get("input_schema", {}),
+                },
+            }
 
-        Returns:
-            Tool in OpenRouter format
-        """
+        # Se è un oggetto ToolSchema, usa gli attributi
         return {
             "type": "function",
             "function": {
