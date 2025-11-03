@@ -147,7 +147,11 @@ class ChatService:
                 logger.info(f"getting llm response..\n{llm_response}")
                 if text_response:
                     final_text_response = text_response
-                    logger.info(f"LLM text response: {text_response[:100]}...")
+                    logger.info(f"\nLLM text response: {text_response[:100]}...")
+
+                if llm_response.stop_reason == 'end_turn':
+                    final_text_response = text_response
+                    break
 
                 # Check stop reason
                 logger.info(f"Stop reason: {llm_response.stop_reason}")
@@ -171,16 +175,23 @@ class ChatService:
                     )
 
                     total_tools_called += len(tool_calls)
+                    logger.info(f"tool_result in service: {tool_results}")
+
 
                     # Add tool results to conversation
                     tool_result_message = MessageConverter.create_tool_result_message(
                         tool_results
                     )
+                    logger.info(f"tool result message: {tool_result_message}")
+                    logger.info(f"tool result message content: {tool_result_message.get("content")}")
+
                     conversation.add_message(
                         "user",
                         self._message_content_to_str(tool_result_message["content"]),
                         metadata={"tool_results": True},
                     )
+
+                    logger.info(f"\nconversation state:\n{conversation}")
 
                     # Continue loop for next iteration
                     continue
@@ -342,11 +353,12 @@ class ChatService:
         Returns:
             String representation
         """
+
         if isinstance(content, str):
             return content
         elif isinstance(content, list):
             # For structured content, just store a placeholder
-            return f"[Structured content with {len(content)} block(s)]"
+            return str(content)
         else:
             return str(content)
 

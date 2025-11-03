@@ -219,6 +219,9 @@ class OpenRouterClient(LLMProvider):
                     **kwargs,
                 )
 
+               # if response.stop_reason == 'endTurn':
+               #     break
+               #
             except LLMRateLimitError as e:
                 last_exception = e
                 if attempt < max_retries - 1:
