@@ -216,12 +216,17 @@ class MessageConverter:
             if stop_reason == "tool_calls":
                 stop_reason = CONTENT_TYPE_TOOL_USE
 
-            return LLMResponse(
+
+            opr_message_response = LLMResponse(
                 content=content_blocks,
                 stop_reason=stop_reason,
                 usage=usage,
                 model=response_data.get("model"),
             )
+
+            logger.info(f"message response in converter: {opr_message_response} ")
+
+            return opr_message_response
 
         except Exception as e:
             raise MessageFormatError(f"Failed to parse OpenRouter response: {e}") from e
@@ -292,6 +297,7 @@ class MessageConverter:
                     "is_error": result.get("is_error", False),
                 }
             )
+        logger.info(f"tool_result_blocks: {tool_result_blocks}")
 
         return {"role": ROLE_USER, "content": tool_result_blocks}
 

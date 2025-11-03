@@ -1,0 +1,71 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IntelliJ / PyCharm
+.idea/
+*.iml
+
+# VSCode
+.vscode/
+
+# macOS / Linux / Windows
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# Test, build, and packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.cache/
+pytest_cache/
+__pypackages__/
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+
+# Config or secrets
+*.env
+.env.*
+secrets.json
+config.json
+
+# Data and model artifacts
+*.pkl
+*.h5
+*.ckpt
+*.pt
+*.onnx
+*.joblib
+*.csv
+*.tsv
+*.xlsx
+*.jsonl
+
+# Local outputs
+output/
+results/
+logs/
+checkpoints/
+runs/
