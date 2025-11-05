@@ -20,7 +20,7 @@ class ConversationMessage(BaseModel):
 
     role: Literal["user", "assistant", "system"]
     content: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.now)
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -50,6 +50,9 @@ class ConversationState(BaseModel):
         self.iteration_count += 1
         if self.iteration_count >= self.max_iterations:
             self.is_complete = True
+
+    def reset_iteration_count(self) -> None:
+        self.iteration_count = 0
 
     def get_messages_for_llm(self) -> List[Dict[str, Any]]:
         """
@@ -112,7 +115,7 @@ class ResourceContent(BaseModel):
     resource_id: str
     content: str
     content_type: str
-    loaded_at: datetime = Field(default_factory=datetime.utcnow)
+    loaded_at: datetime = Field(default_factory=datetime.now)
 
 
 # ============================================================================

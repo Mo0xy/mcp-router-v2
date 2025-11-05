@@ -11,7 +11,7 @@ REFACTORING FROM V1:
 - Separation: Business logic (here) vs Presentation (CLI adapter)
 """
 
-import asyncio
+
 import logging
 from typing import Dict, List, Any, Optional
 
@@ -21,6 +21,7 @@ from src.domain.chat.models import (
     ConversationState,
     ResourceReference,
 )
+from src.domain.conversation.manager import ConversationManager
 from src.domain.tools.manager import ToolManager
 from src.domain.mcp.protocols import MCPClientProtocol
 from src.infrastructure.llm.base import LLMProvider
@@ -56,6 +57,7 @@ class ChatService:
             llm_provider: LLMProvider,
             tool_manager: ToolManager,
             mcp_clients: Dict[str, MCPClientProtocol],
+            conversation_manager: ConversationManager,
             default_max_iterations: int = 5,
             default_temperature: float = 0.4,
             default_max_tokens: int = 10000,
@@ -77,12 +79,13 @@ class ChatService:
         self.default_max_iterations = default_max_iterations
         self.default_temperature = default_temperature
         self.default_max_tokens = default_max_tokens
+        self.conversation_manager = conversation_manager
 
     # ========================================================================
     # Main Processing Logic
     # ========================================================================
 
-    async def process_query(self, request: UserChatRequest) -> ChatResponse:
+    async def process_query(self, request: UserChatRequest, conversation_id: Optional[str]) -> ChatResponse:
         """
         Process a chat query end-to-end.
 
@@ -90,20 +93,45 @@ class ChatService:
         conversation flow including tool execution.
 
         Args:
-            request: Chat request with query and parameters
+            :param request: Chat request with query and parameters
+            :param conversation_id: identifier of the chat
 
         Returns:
             Chat response with final answer
 
         Raises:
             MCPRouterException: If processing fails
+
         """
         logger.info(f"Processing query: {request.query[:100]}...")
 
         # Initialize conversation state
-        conversation = ConversationState(
-            max_iterations=request.max_iterations or self.default_max_iterations
-        )
+        conversation: ConversationState
+
+        if conversation_id:
+            # Continua conversazione esistente
+            session = await self.conversation_manager.get_conversation(conversation_id)
+            if not session:
+                raise MCPRouterException(
+                    f"Conversation {conversation_id} not found",
+                    details={"conversation_id": conversation_id}
+                )
+            conversation = session.state
+            conversation.is_complete = False
+            conversation.reset_iteration_count()
+            logger.info(f"Continuing conversation {conversation_id}")
+        else:
+            # Crea nuova conversazione
+            conversation = ConversationState(
+                max_iterations=request.max_iterations or self.default_max_iterations
+            )
+            session = await self.conversation_manager.create_conversation(
+                initial_state=conversation
+            )
+            conversation_id = session.id
+            logger.info(f"Created new conversation {conversation_id}")
+
+        logger.info(f"\ndisplay conversation:\n{conversation.get_messages_for_llm()}\n")
 
         # Extract and load any resources mentioned in the query
         query_with_resources = await self._process_resources(request.query)
@@ -113,7 +141,7 @@ class ChatService:
 
         # Get available tools
         available_tools = await self.tool_manager.get_all_tools()
-        logger.debug(f"Available tools: {[t['name'] for t in available_tools]}")
+        logger.info(f"Available tools: {[t['name'] for t in available_tools]}")
 
         # Main conversation loop
         total_tools_called = 0
@@ -125,6 +153,7 @@ class ChatService:
             logger.info(
                 f"Iteration {conversation.iteration_count}/{conversation.max_iterations}"
             )
+            logger.info(f"\nconversation messages: \n{conversation.get_messages_for_llm()}\n\n")
 
             try:
                 # Call LLM
@@ -177,7 +206,6 @@ class ChatService:
                     total_tools_called += len(tool_calls)
                     logger.info(f"tool_result in service: {tool_results}")
 
-
                     # Add tool results to conversation
                     tool_result_message = MessageConverter.create_tool_result_message(
                         tool_results
@@ -219,6 +247,11 @@ class ChatService:
         logger.info(
             f"Query processed: {conversation.iteration_count} iterations, "
             f"{total_tools_called} tools called"
+        )
+
+        await self.conversation_manager.update_conversation(
+            conversation_id,
+            conversation
         )
 
         return ChatResponse(

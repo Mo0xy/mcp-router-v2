@@ -79,7 +79,7 @@ async def health_check(
         return HealthResponse(
             status=status_str,
             version=settings.app_version,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now().isoformat(),
             mcp_clients=mcp_status,
         )
     except Exception as e:
@@ -87,7 +87,7 @@ async def health_check(
         return HealthResponse(
             status="unhealthy",
             version=settings.app_version,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now().isoformat(),
             mcp_clients={},
         )
 
@@ -157,11 +157,16 @@ async def chat(
         )
 
         # Process via chat service
-        domain_response = await chat_service.process_query(domain_request)
+        #domain_response = await chat_service.process_query(domain_request)
+        domain_response = await chat_service.process_query(
+            domain_request,
+            conversation_id=request.conversation_id
+        )
 
         # Build API response
         response = ChatResponse(
             response=domain_response.response,
+            conversation_id=domain_response.conversation_id,
             iterations=domain_response.iterations_used,
             tools_called=domain_response.tools_called,
             metadata=domain_response.metadata if request.include_metadata else None,
