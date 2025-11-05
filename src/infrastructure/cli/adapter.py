@@ -14,11 +14,11 @@ REFACTORING FROM V1:
 """
 
 import logging
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional
 from src.domain.chat.service import ChatService
 from src.domain.chat.models import UserChatRequest, ChatResponse
 from src.domain.mcp.client import MCPClient
-from src.infrastructure.llm.models import LLMResponse
+from src.domain.conversation.manager import ConversationManager
 from src.shared.exceptions import ToolExecutionError
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,7 @@ class CliAdapter:
             self,
             chat_service: ChatService,
             mcp_clients: Dict[str, MCPClient],
+            conversation_manager: ConversationManager,
     ):
         """
         Initialize CLI adapter.
@@ -46,9 +47,16 @@ class CliAdapter:
             chat_service: Core chat service (domain layer)
             mcp_clients: Dictionary of MCP clients by name
         """
+        self.current_conversation = None
         self.chat_service = chat_service
         self.mcp_clients = mcp_clients
-        logger.info("CLI Adapter initialized")
+        self.conversation_manager = conversation_manager
+        logger.info("CLI Adapter base params initialized")
+
+    async def initialize(self):
+        self.current_conversation = await self.conversation_manager.create_conversation()
+        logger.info("Conversation Initialized")
+        logger.info("CLI initialization completed")
 
     # ========================================================================
     # Main Chat Method
@@ -88,8 +96,10 @@ class CliAdapter:
                 return await self._handle_prompt_command(user_query.query)
 
             # Regular chat processing
-
-            return await self.chat_service.process_query(user_query)
+            return await (
+                self.chat_service.process_query(
+                    user_query,
+                    conversation_id=self.current_conversation.id))
 
         except Exception as e:
             logger.error(f"Error processing CLI message: {e}")

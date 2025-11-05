@@ -44,6 +44,7 @@ class ChatRequest(BaseModel):
         description="User prompt/query",
         examples=["What is the capital of France?"]
     )
+    conversation_id: Optional[str] = Field(None)
     max_iterations: Optional[int] = Field(
         default=None,
         ge=1,
@@ -72,6 +73,7 @@ class ChatResponse(BaseModel):
     """Chat response to API client."""
 
     response: str = Field(..., description="Generated response text")
+    conversation_id: str = Field(..., description="Identifier of the chat")
     iterations: int = Field(..., description="Number of iterations used")
     tools_called: int = Field(default=0, description="Number of tools executed")
     metadata: Optional[Dict[str, Any]] = Field(

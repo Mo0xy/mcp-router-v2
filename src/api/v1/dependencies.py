@@ -5,11 +5,14 @@ This module provides all dependencies needed by API endpoints,
 following dependency injection principles for testability and flexibility.
 """
 
-from typing import Dict, AsyncGenerator
+from typing import Dict, AsyncGenerator, Optional
 from fastapi import Depends
 from contextlib import asynccontextmanager
 
 from src.config.settings import Settings, get_settings
+from src.domain.conversation.manager import ConversationManager
+from src.domain.conversation.storage.base import ConversationStorage
+from src.domain.conversation.storage.memory import InMemoryConversationStorage
 from src.infrastructure.llm.openrouter import OpenRouterClient
 from src.infrastructure.llm.base import LLMProvider
 from src.domain.mcp.client import MCPClient
@@ -249,3 +252,44 @@ async def lifespan_manager(settings: Settings) -> AsyncGenerator[None, None]:
         logger.info("Application shutdown: Cleaning up resources...")
         await cleanup_mcp_clients()
         logger.info("✓ Application shutdown completed")
+
+########################################################
+# Storage
+########################################################
+_conversation_storage: Optional[ConversationStorage] = None
+
+
+def get_conversation_storage() -> ConversationStorage:
+    """Get conversation storage instance."""
+    global _conversation_storage
+
+    if _conversation_storage is None:
+        _conversation_storage = InMemoryConversationStorage()
+
+    return _conversation_storage
+
+
+def get_conversation_manager(
+        storage: ConversationStorage = Depends(get_conversation_storage)
+) -> ConversationManager:
+    """Get conversation manager instance."""
+    return ConversationManager(storage=storage)
+
+
+def get_chat_service(
+        llm_provider: LLMProvider = Depends(get_llm_provider),
+        tool_manager: ToolManager = Depends(get_tool_manager),
+        mcp_clients: Dict[str, MCPClient] = Depends(get_mcp_clients),
+        conversation_manager: ConversationManager = Depends(get_conversation_manager),
+        settings: Settings = Depends(get_app_settings),
+) -> ChatService:
+    """Get chat service with conversation management."""
+    return ChatService(
+        llm_provider=llm_provider,
+        tool_manager=tool_manager,
+        mcp_clients=mcp_clients,
+        conversation_manager=conversation_manager,
+        default_max_iterations=settings.max_iterations,
+        default_temperature=settings.default_temperature,
+        default_max_tokens=settings.default_max_tokens,
+    )
