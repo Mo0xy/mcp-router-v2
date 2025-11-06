@@ -114,7 +114,7 @@ class DatabaseRepository:
                 print(f"Name: {user_data['name']} {user_data['surname']}")
                 print(f"CV: {user_data['cv_content'][:100]}...")
         """
-        query = "SELECT name, surname, cv_content, jobdescription FROM candidate_applications_view WHERE email = %s"
+        query = "SELECT name, surname, cv_content, semantic_profile, jobdescription FROM candidate_applications_view WHERE email = %s"
 
         try:
             result = self.execute_query(query, (email,))
@@ -197,7 +197,6 @@ class DatabaseRepository:
         except Exception as e:
             logger.error(f"Failed to get job requirements for {job_id}: {e}")
             return {}
-
     # ========================================================================
     # Health Check
     # ========================================================================
