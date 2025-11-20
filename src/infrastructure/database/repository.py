@@ -197,6 +197,28 @@ class DatabaseRepository:
         except Exception as e:
             logger.error(f"Failed to get job requirements for {job_id}: {e}")
             return {}
+
+    def get_transcription(self, email: str) -> Optional[Dict[str, str]]:
+        """
+            Get transcription text by email.
+        :param email:
+        :return:
+        """
+
+        query = "SELECT i_transcription FROM candidate_interview_view WHERE c_email = %s"
+
+        try:
+            result = self.execute_query(query, (email,))
+            if result:
+                logger.info(f"Found job requirements for ID: {email}")
+            else:
+                logger.warning(f"No job found for ID: {email}")
+            return result if result else {}
+        except Exception as e:
+            logger.error(f"Failed to get job requirements for {email
+            }: {e}")
+            return {}
+
     # ========================================================================
     # Health Check
     # ========================================================================
@@ -209,3 +231,4 @@ class DatabaseRepository:
             True if database is accessible, False otherwise
         """
         return self.db_manager.test_connection()
+
