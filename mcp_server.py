@@ -17,15 +17,10 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import datetime
-from typing import Any
-
 import anyio
-from colorama import Fore
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import SamplingMessage, TextContent
-from pywin.mfc.object import Object
 
 # Import V2 database infrastructure
 from src.infrastructure.database.connection import get_db_manager
