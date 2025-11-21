@@ -63,6 +63,7 @@ class ToolExecutor:
             "search": 45.0,
             "analyze": 60.0,
             "generate_interview_questions": 120.0,
+            "analyze_transcription": 180.0,
         }
 
     # ========================================================================
