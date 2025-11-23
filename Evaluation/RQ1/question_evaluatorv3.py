@@ -13,13 +13,15 @@ Basato su:
 - McDaniel et al. (1994) - Structured interviews validity
 - Zheng et al. (2023) - LLM-as-a-Judge per compliance checking
 """
-
 import re
 import json
 import requests
 from typing import List, Dict, Optional
 from dataclasses import dataclass, asdict
 import numpy as np
+from src.infrastructure.database.connection import get_db_manager
+from src.infrastructure.database.repository import DatabaseRepository
+from src.shared.exceptions import DatabaseError
 
 
 # =============================================================================
@@ -522,130 +524,135 @@ IMPORTANTE:
         except json.JSONDecodeError as e:
             print(f"[ERROR] JSON parsing failed: {e}")
             print(f"Content received: {content[:500]}")
-            raise
+            #raise
 
     def _build_result(self, question: Question, data: Dict) -> EvaluationResult:
         """
         Costruisce EvaluationResult strutturato dai dati parsed
         """
+        try:
+            # STAR Compliance
+            star_data = data['star_compliance']
+            components_present = sum([
+                star_data['situation']['present'],
+                star_data['task']['present'],
+                star_data['action']['present'],
+                star_data['result']['present']
+            ])
 
-        # STAR Compliance
-        star_data = data['star_compliance']
-        components_present = sum([
-            star_data['situation']['present'],
-            star_data['task']['present'],
-            star_data['action']['present'],
-            star_data['result']['present']
-        ])
+            # Calcola media quality solo per componenti presenti
+            star_qualities = []
+            if star_data['situation']['present']:
+                star_qualities.append(star_data['situation']['quality'])
+            if star_data['task']['present']:
+                star_qualities.append(star_data['task']['quality'])
+            if star_data['action']['present']:
+                star_qualities.append(star_data['action']['quality'])
+            if star_data['result']['present']:
+                star_qualities.append(star_data['result']['quality'])
 
-        # Calcola media quality solo per componenti presenti
-        star_qualities = []
-        if star_data['situation']['present']:
-            star_qualities.append(star_data['situation']['quality'])
-        if star_data['task']['present']:
-            star_qualities.append(star_data['task']['quality'])
-        if star_data['action']['present']:
-            star_qualities.append(star_data['action']['quality'])
-        if star_data['result']['present']:
-            star_qualities.append(star_data['result']['quality'])
+            star_score = np.mean(star_qualities) if star_qualities else 0.0
 
-        star_score = np.mean(star_qualities) if star_qualities else 0.0
+            star_compliance = STARCompliance(
+                situation_present=star_data['situation']['present'],
+                situation_quality=star_data['situation']['quality'],
+                situation_rationale=star_data['situation']['rationale'],
+                task_present=star_data['task']['present'],
+                task_quality=star_data['task']['quality'],
+                task_rationale=star_data['task']['rationale'],
+                action_present=star_data['action']['present'],
+                action_quality=star_data['action']['quality'],
+                action_rationale=star_data['action']['rationale'],
+                result_present=star_data['result']['present'],
+                result_quality=star_data['result']['quality'],
+                result_rationale=star_data['result']['rationale'],
+                star_score=float(star_score),
+                components_present_count=components_present
+            )
 
-        star_compliance = STARCompliance(
-            situation_present=star_data['situation']['present'],
-            situation_quality=star_data['situation']['quality'],
-            situation_rationale=star_data['situation']['rationale'],
-            task_present=star_data['task']['present'],
-            task_quality=star_data['task']['quality'],
-            task_rationale=star_data['task']['rationale'],
-            action_present=star_data['action']['present'],
-            action_quality=star_data['action']['quality'],
-            action_rationale=star_data['action']['rationale'],
-            result_present=star_data['result']['present'],
-            result_quality=star_data['result']['quality'],
-            result_rationale=star_data['result']['rationale'],
-            star_score=float(star_score),
-            components_present_count=components_present
-        )
+            # BEI Compliance
+            bei_data = data['bei_compliance']
+            bei_score = np.mean([
+                bei_data['past_behavior_focus']['score'],
+                bei_data['specificity']['score'],
+                bei_data['probing_depth']['score'],
+                bei_data['job_relevance']['score']
+            ])
 
-        # BEI Compliance
-        bei_data = data['bei_compliance']
-        bei_score = np.mean([
-            bei_data['past_behavior_focus']['score'],
-            bei_data['specificity']['score'],
-            bei_data['probing_depth']['score'],
-            bei_data['job_relevance']['score']
-        ])
+            bei_compliance = BEICompliance(
+                past_behavior_focus=bei_data['past_behavior_focus']['score'],
+                past_behavior_rationale=bei_data['past_behavior_focus']['rationale'],
+                specificity=bei_data['specificity']['score'],
+                specificity_rationale=bei_data['specificity']['rationale'],
+                probing_depth=bei_data['probing_depth']['score'],
+                probing_depth_rationale=bei_data['probing_depth']['rationale'],
+                job_relevance=bei_data['job_relevance']['score'],
+                job_relevance_rationale=bei_data['job_relevance']['rationale'],
+                bei_score=float(bei_score)
+            )
 
-        bei_compliance = BEICompliance(
-            past_behavior_focus=bei_data['past_behavior_focus']['score'],
-            past_behavior_rationale=bei_data['past_behavior_focus']['rationale'],
-            specificity=bei_data['specificity']['score'],
-            specificity_rationale=bei_data['specificity']['rationale'],
-            probing_depth=bei_data['probing_depth']['score'],
-            probing_depth_rationale=bei_data['probing_depth']['rationale'],
-            job_relevance=bei_data['job_relevance']['score'],
-            job_relevance_rationale=bei_data['job_relevance']['rationale'],
-            bei_score=float(bei_score)
-        )
+            # Personalization
+            pers_data = data['personalization']
+            personalization = PersonalizationMetrics(
+                integration_score=pers_data['integration_score'],
+                integration_rationale=pers_data['integration_rationale'],
+                entities_mentioned=pers_data['entities_mentioned'],
+                entities_count=len(pers_data['entities_mentioned']),
+                biographical_references=pers_data['biographical_references'],
+                has_specific_references=pers_data['has_specific_references']
+            )
 
-        # Personalization
-        pers_data = data['personalization']
-        personalization = PersonalizationMetrics(
-            integration_score=pers_data['integration_score'],
-            integration_rationale=pers_data['integration_rationale'],
-            entities_mentioned=pers_data['entities_mentioned'],
-            entities_count=len(pers_data['entities_mentioned']),
-            biographical_references=pers_data['biographical_references'],
-            has_specific_references=pers_data['has_specific_references']
-        )
+            # Relevance Verification
+            rel_data = data['relevance_verification']
+            relevance_verification = RelevanceVerification(
+                cv_references_found=rel_data['cv_references_found'],
+                cv_specific_mentions=rel_data['cv_specific_mentions'],
+                cv_reference_quality=rel_data['cv_reference_quality'],
+                jd_references_found=rel_data['jd_references_found'],
+                jd_competencies_mentioned=rel_data['jd_competencies_mentioned'],
+                jd_reference_quality=rel_data['jd_reference_quality'],
+                is_well_grounded=rel_data['is_well_grounded'],
+                grounding_rationale=rel_data['grounding_rationale']
+            )
 
-        # Relevance Verification
-        rel_data = data['relevance_verification']
-        relevance_verification = RelevanceVerification(
-            cv_references_found=rel_data['cv_references_found'],
-            cv_specific_mentions=rel_data['cv_specific_mentions'],
-            cv_reference_quality=rel_data['cv_reference_quality'],
-            jd_references_found=rel_data['jd_references_found'],
-            jd_competencies_mentioned=rel_data['jd_competencies_mentioned'],
-            jd_reference_quality=rel_data['jd_reference_quality'],
-            is_well_grounded=rel_data['is_well_grounded'],
-            grounding_rationale=rel_data['grounding_rationale']
-        )
+            # Overall Assessment
+            overall_data = data['overall']
 
-        # Overall Assessment
-        overall_data = data['overall']
+            # Calcola final score (media pesata)
+            # Peso maggiore a BEI e STAR
+            final_score = (
+                    star_score * 0.35 +
+                    bei_score * 0.35 +
+                    pers_data['integration_score'] * 0.30
+            )
 
-        # Calcola final score (media pesata)
-        # Peso maggiore a BEI e STAR
-        final_score = (
-                star_score * 0.35 +
-                bei_score * 0.35 +
-                pers_data['integration_score'] * 0.30
-        )
+            overall_assessment = OverallAssessment(
+                star_score=float(star_score),
+                bei_score=float(bei_score),
+                personalization_score=pers_data['integration_score'],
+                final_score=float(final_score),
+                quality_category=overall_data['quality_category'],
+                meets_star_standard=star_score >= 3.5,
+                meets_bei_standard=bei_score >= 3.5,
+                meets_both_standards=(star_score >= 3.5 and bei_score >= 3.5),
+                strengths=overall_data['strengths'],
+                weaknesses=overall_data['weaknesses'],
+                improvement_suggestions=overall_data['improvement_suggestions']
+            )
 
-        overall_assessment = OverallAssessment(
-            star_score=float(star_score),
-            bei_score=float(bei_score),
-            personalization_score=pers_data['integration_score'],
-            final_score=float(final_score),
-            quality_category=overall_data['quality_category'],
-            meets_star_standard=star_score >= 3.5,
-            meets_bei_standard=bei_score >= 3.5,
-            meets_both_standards=(star_score >= 3.5 and bei_score >= 3.5),
-            strengths=overall_data['strengths'],
-            weaknesses=overall_data['weaknesses'],
-            improvement_suggestions=overall_data['improvement_suggestions']
-        )
+            return EvaluationResult(
+                question=question,
+                star_compliance=star_compliance,
+                bei_compliance=bei_compliance,
+                personalization=personalization,
+                relevance_verification=relevance_verification,
+                overall_assessment=overall_assessment
+            )
+        except Exception as e:
+            print("[ERROR] Building EvaluationResult failed: {e}")
+            print("skipping result construction...")
+            pass
 
-        return EvaluationResult(
-            question=question,
-            star_compliance=star_compliance,
-            bei_compliance=bei_compliance,
-            personalization=personalization,
-            relevance_verification=relevance_verification,
-            overall_assessment=overall_assessment
-        )
 
 
 # =============================================================================
@@ -662,20 +669,20 @@ def print_evaluation_report(result: EvaluationResult, detailed: bool = True):
     pers = result.personalization
     rel = result.relevance_verification
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("QUESTION EVALUATION REPORT")
-    print("="*80)
+    print("=" * 80)
 
     # Question Text
     print(f"\nQUESTION TEXT:")
     print(f"{result.question.text}")
 
     # Overall Summary Table
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("OVERALL ASSESSMENT")
-    print("="*80)
+    print("=" * 80)
     print(f"{'Metric':<30} {'Score':<15} {'Status':<15}")
-    print("-"*80)
+    print("-" * 80)
     print(f"{'Final Score':<30} {oa.final_score:.2f}/5.00")
     print(f"{'Quality Category':<30} {oa.quality_category.upper()}")
     print(f"{'STAR Score':<30} {oa.star_score:.2f}/5.00     {'Yes' if oa.meets_star_standard else 'No':<15}")
@@ -685,36 +692,40 @@ def print_evaluation_report(result: EvaluationResult, detailed: bool = True):
 
     if detailed:
         # STAR Compliance Table
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"STAR COMPLIANCE (Score: {star.star_score:.2f}/5.00)")
-        print("="*80)
+        print("=" * 80)
         print(f"Components Present: {star.components_present_count}/4")
         print()
         print(f"{'Component':<15} {'Present':<10} {'Quality':<10} {'Rationale'}")
-        print("-"*80)
-        print(f"{'Situation':<15} {'Yes' if star.situation_present else 'No':<10} {star.situation_quality}/5      {star.situation_rationale}")
-        print(f"{'Task':<15} {'Yes' if star.task_present else 'No':<10} {star.task_quality}/5      {star.task_rationale}")
-        print(f"{'Action':<15} {'Yes' if star.action_present else 'No':<10} {star.action_quality}/5      {star.action_rationale}")
-        print(f"{'Result':<15} {'Yes' if star.result_present else 'No':<10} {star.result_quality}/5      {star.result_rationale}")
+        print("-" * 80)
+        print(
+            f"{'Situation':<15} {'Yes' if star.situation_present else 'No':<10} {star.situation_quality}/5      {star.situation_rationale}")
+        print(
+            f"{'Task':<15} {'Yes' if star.task_present else 'No':<10} {star.task_quality}/5      {star.task_rationale}")
+        print(
+            f"{'Action':<15} {'Yes' if star.action_present else 'No':<10} {star.action_quality}/5      {star.action_rationale}")
+        print(
+            f"{'Result':<15} {'Yes' if star.result_present else 'No':<10} {star.result_quality}/5      {star.result_rationale}")
 
         # BEI Compliance Table
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"BEI COMPLIANCE (Score: {bei.bei_score:.2f}/5.00)")
-        print("="*80)
+        print("=" * 80)
         print(f"{'Dimension':<25} {'Score':<10} {'Rationale'}")
-        print("-"*80)
+        print("-" * 80)
         print(f"{'Past Behavior Focus':<25} {bei.past_behavior_focus}/5      {bei.past_behavior_rationale}")
         print(f"{'Specificity':<25} {bei.specificity}/5      {bei.specificity_rationale}")
         print(f"{'Probing Depth':<25} {bei.probing_depth}/5      {bei.probing_depth_rationale}")
         print(f"{'Job Relevance':<25} {bei.job_relevance}/5      {bei.job_relevance_rationale}")
 
         # Personalization Table
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"PERSONALIZATION (Score: {pers.integration_score}/5)")
-        print("="*80)
+        print("=" * 80)
         print(f"Rationale: {pers.integration_rationale}")
         print(f"\n{'Metric':<30} {'Value'}")
-        print("-"*80)
+        print("-" * 80)
         print(f"{'Entities Mentioned Count':<30} {pers.entities_count}")
         if pers.entities_mentioned:
             print(f"{'Entities List':<30} {', '.join(pers.entities_mentioned)}")
@@ -724,39 +735,41 @@ def print_evaluation_report(result: EvaluationResult, detailed: bool = True):
         print(f"{'Has Specific References':<30} {'Yes' if pers.has_specific_references else 'No'}")
 
         # Relevance Verification Table
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("RELEVANCE VERIFICATION")
-        print("="*80)
+        print("=" * 80)
         print(f"Well-Grounded (CV+JD): {'Yes' if rel.is_well_grounded else 'No'}")
         print(f"Rationale: {rel.grounding_rationale}")
         print()
         print(f"{'Aspect':<25} {'Found':<10} {'Quality':<15} {'Details'}")
-        print("-"*80)
+        print("-" * 80)
         cv_mentions = ', '.join(rel.cv_specific_mentions) if rel.cv_specific_mentions else 'None'
-        print(f"{'CV References':<25} {'Yes' if rel.cv_references_found else 'No':<10} {rel.cv_reference_quality:<15} {cv_mentions}")
+        print(
+            f"{'CV References':<25} {'Yes' if rel.cv_references_found else 'No':<10} {rel.cv_reference_quality:<15} {cv_mentions}")
         jd_mentions = ', '.join(rel.jd_competencies_mentioned) if rel.jd_competencies_mentioned else 'None'
-        print(f"{'JD References':<25} {'Yes' if rel.jd_references_found else 'No':<10} {rel.jd_reference_quality:<15} {jd_mentions}")
+        print(
+            f"{'JD References':<25} {'Yes' if rel.jd_references_found else 'No':<10} {rel.jd_reference_quality:<15} {jd_mentions}")
 
     # Strengths and Weaknesses
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("STRENGTHS")
-    print("="*80)
+    print("=" * 80)
     for i, strength in enumerate(oa.strengths, 1):
         print(f"{i}. {strength}")
 
     if oa.weaknesses:
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("WEAKNESSES")
-        print("="*80)
+        print("=" * 80)
         for i, weakness in enumerate(oa.weaknesses, 1):
             print(f"{i}. {weakness}")
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("IMPROVEMENT SUGGESTIONS")
-    print("="*80)
+    print("=" * 80)
     print(f"{oa.improvement_suggestions}")
 
-    print("\n" + "="*80 + "\n")
+    print("\n" + "=" * 80 + "\n")
 
 
 def generate_aggregate_report(results: List[EvaluationResult]) -> Dict:
@@ -806,8 +819,10 @@ def generate_aggregate_report(results: List[EvaluationResult]) -> Dict:
             'well_grounded_rate': sum(1 for r in results if r.relevance_verification.is_well_grounded) / n * 100,
             'cv_refs_found_rate': sum(1 for r in results if r.relevance_verification.cv_references_found) / n * 100,
             'jd_refs_found_rate': sum(1 for r in results if r.relevance_verification.jd_references_found) / n * 100,
-            'specific_cv_quality_rate': sum(1 for r in results if r.relevance_verification.cv_reference_quality == 'specific') / n * 100,
-            'specific_jd_quality_rate': sum(1 for r in results if r.relevance_verification.jd_reference_quality == 'specific') / n * 100
+            'specific_cv_quality_rate': sum(
+                1 for r in results if r.relevance_verification.cv_reference_quality == 'specific') / n * 100,
+            'specific_jd_quality_rate': sum(
+                1 for r in results if r.relevance_verification.jd_reference_quality == 'specific') / n * 100
         },
 
         # Overall quality
@@ -817,7 +832,8 @@ def generate_aggregate_report(results: List[EvaluationResult]) -> Dict:
             'meets_both_standards_rate': sum(1 for r in results if r.overall_assessment.meets_both_standards) / n * 100,
             'excellent_rate': sum(1 for r in results if r.overall_assessment.quality_category == 'excellent') / n * 100,
             'good_rate': sum(1 for r in results if r.overall_assessment.quality_category == 'good') / n * 100,
-            'acceptable_rate': sum(1 for r in results if r.overall_assessment.quality_category == 'acceptable') / n * 100,
+            'acceptable_rate': sum(
+                1 for r in results if r.overall_assessment.quality_category == 'acceptable') / n * 100,
             'poor_rate': sum(1 for r in results if r.overall_assessment.quality_category == 'poor') / n * 100
         }
     }
@@ -829,18 +845,18 @@ def print_aggregate_report(report: Dict):
     """
     Print aggregate report in formal tabular format (English)
     """
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("AGGREGATE EVALUATION REPORT")
-    print("="*80)
+    print("=" * 80)
     print(f"\nTotal Questions Evaluated: {report['total_questions']}")
 
     # STAR Compliance Table
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("STAR COMPLIANCE SUMMARY")
-    print("="*80)
+    print("=" * 80)
     star = report['star']
     print(f"{'Metric':<40} {'Value'}")
-    print("-"*80)
+    print("-" * 80)
     print(f"{'Average Score':<40} {star['avg_score']:.2f} +/- {star['std_dev']:.2f}")
     print(f"{'Meets Standard (>=3.5)':<40} {star['meets_standard_rate']:.1f}%")
     print(f"{'Average Components Present':<40} {star['avg_components_count']:.1f}/4")
@@ -852,12 +868,12 @@ def print_aggregate_report(report: Dict):
     print(f"{'  Result':<40} {star['result_present_rate']:.1f}%")
 
     # BEI Compliance Table
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("BEI COMPLIANCE SUMMARY")
-    print("="*80)
+    print("=" * 80)
     bei = report['bei']
     print(f"{'Metric':<40} {'Value'}")
-    print("-"*80)
+    print("-" * 80)
     print(f"{'Average Score':<40} {bei['avg_score']:.2f} +/- {bei['std_dev']:.2f}")
     print(f"{'Meets Standard (>=3.5)':<40} {bei['meets_standard_rate']:.1f}%")
     print()
@@ -868,23 +884,23 @@ def print_aggregate_report(report: Dict):
     print(f"{'  Job Relevance':<40} {bei['avg_job_relevance']:.2f}/5")
 
     # Personalization Table
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("PERSONALIZATION SUMMARY")
-    print("="*80)
+    print("=" * 80)
     pers = report['personalization']
     print(f"{'Metric':<40} {'Value'}")
-    print("-"*80)
+    print("-" * 80)
     print(f"{'Average Score':<40} {pers['avg_score']:.2f}/5")
     print(f"{'Average Entities Mentioned':<40} {pers['avg_entities_count']:.1f}")
     print(f"{'Questions with Specific References':<40} {pers['has_specific_refs_rate']:.1f}%")
 
     # Relevance Verification Table
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("RELEVANCE VERIFICATION SUMMARY")
-    print("="*80)
+    print("=" * 80)
     rel = report['relevance']
     print(f"{'Metric':<40} {'Value'}")
-    print("-"*80)
+    print("-" * 80)
     print(f"{'Well-Grounded (CV+JD)':<40} {rel['well_grounded_rate']:.1f}%")
     print(f"{'Questions with CV References':<40} {rel['cv_refs_found_rate']:.1f}%")
     print(f"{'Questions with JD References':<40} {rel['jd_refs_found_rate']:.1f}%")
@@ -892,12 +908,12 @@ def print_aggregate_report(report: Dict):
     print(f"{'JD References - Specific Quality':<40} {rel['specific_jd_quality_rate']:.1f}%")
 
     # Overall Quality Table
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("OVERALL QUALITY SUMMARY")
-    print("="*80)
+    print("=" * 80)
     overall = report['overall']
     print(f"{'Metric':<40} {'Value'}")
-    print("-"*80)
+    print("-" * 80)
     print(f"{'Average Final Score':<40} {overall['avg_final_score']:.2f} +/- {overall['std_dev']:.2f}")
     print(f"{'Meets Both Standards (STAR+BEI)':<40} {overall['meets_both_standards_rate']:.1f}%")
     print()
@@ -907,11 +923,100 @@ def print_aggregate_report(report: Dict):
     print(f"{'  Acceptable (2.5-3.49)':<40} {overall['acceptable_rate']:.1f}%")
     print(f"{'  Poor (<2.5)':<40} {overall['poor_rate']:.1f}%")
 
-    print("\n" + "="*80 + "\n")
+    print("\n" + "=" * 80 + "\n")
+
+
+def initialize_database() -> DatabaseRepository:
+    """Initialize database connection and repository."""
+
+    try:
+        db_manager = get_db_manager()
+        db_repo = DatabaseRepository(db_manager)
+
+        # Test connection
+        if db_repo.health_check():
+            print("✓ Database connected successfully")
+        else:
+            print("✗ Database health check failed")
+
+    except Exception as e:
+        print(f"Failed to initialize database: {e}")
+        raise
+
+    return db_repo
+
+def extract_question_groups(text: str):
+    """
+    Estrae le domande dal testo e le raggruppa in liste separate
+    ogni volta che la numerazione riparte da 1.
+
+    Ritorna: lista di liste
+    """
+    lines = text.splitlines()
+    groups = []
+    current_group = []
+
+    # Pattern: **1.** oppure **2.** ecc.
+    index_pattern = re.compile(r'^\s*\*\*([0-9]+)\.\*\*')
+
+    # Pattern: *“ domanda ”*
+    question_pattern = re.compile(r'\*\s*“(.*?)”\s*\*', flags=re.DOTALL)
+
+    current_index = None
+
+    for line in lines:
+        # rileva inizio nuova domanda
+        index_match = index_pattern.match(line)
+        if index_match:
+            idx = int(index_match.group(1))
+
+            # Se ritorna a 1, inizia un nuovo gruppo
+            if idx == 1 and current_group:
+                groups.append(current_group)
+                current_group = []
+
+            current_index = idx
+
+        # rileva il testo della domanda
+        q_match = question_pattern.search(line)
+        if q_match:
+            question = q_match.group(1).strip()
+            current_group.append(question)
+
+    # Aggiunge l'ultimo gruppo
+    if current_group:
+        groups.append(current_group)
+
+    return groups
+
+
+def get_context_data_for_question_group(question_group) -> List[str]:
+    db_repo: DatabaseRepository = initialize_database()
+    cv_cont = []
+    job_descript = []
+    email = "mario.rossi@example.com" if question_group == 1 else "sofia.verdi@example.com"
+    # email = "sofia.verdi@example.com"
+    if db_repo:
+        try:
+            user_data = db_repo.get_user_data_by_email(email)
+            cv_cont = user_data.get('cv_content')
+            job_descript = user_data.get('jobdescription')
+            # semantic_profile = user_data.get('semantic_profile')
+        except Exception as e:
+            print(f"[ERROR] Failed to retrieve user data: {e}")
+            cv_cont = "Default CV content for testing purposes."
+            job_descript = "Default Job Description content for testing purposes."
+            # semantic_profile = {}
+    else:
+        raise Exception("Database repository is not initialized.")
+    print(f"[INFO] Retrieved context data for email: {email}")
+    print(f"       CV length: {len(cv_cont)} characters")
+    print(f"       Job Description length: {len(job_descript)} characters")
+    print("\n")
+    return [cv_cont, job_descript]
 
 
 if __name__ == "__main__":
-
     print("""
 ================================================================================
             QUESTION EVALUATOR - STAR/BEI Compliance Version
@@ -926,111 +1031,43 @@ if __name__ == "__main__":
 ================================================================================
     """)
 
-    # Dati di esempio
-    job_description = """
-Location: Monselice, Padova, Italy
-Position: Sustainability Project Manager
+    # read questions from file
 
-Key Responsibilities:
-- Manage sustainability R&D projects from initiation to completion
-- Support carbon footprint reduction strategies and energy-saving initiatives
-- Conduct Life Cycle Assessments (LCA) and Environmental Product Declarations (EPD)
-- Collaborate with engineering, supply chain, and operations teams
+    with open("questions_to_eval.txt", "r", encoding="utf-8") as f:
+        text = f.read()
 
-Required Skills:
-- Bachelor's or Master's in Sustainability, Environmental Science, or Engineering
-- Experience in sustainability project management
-- Strong analytical skills for environmental impact data
-- Excellent communication and stakeholder management
-- Knowledge of LCA tools and carbon footprint analysis
-    """
-
-    cv_content = """
-[CANDIDATE_NAME]
-Environmental Engineer
-
-EDUCATION:
-Master's in Environmental Engineering, [UNIVERSITY_NAME]
-Thesis: "Monitoraggio delle prestazioni di un impianto di fitodepurazione"
-Grade: 110 e Lode
-
-EXPERIENCE:
-09/2017-present: Environmental Engineer, [COMPANY_NAME]
-- Waste management documentation (formulari, Sistri, test reports)
-- Water quality parameter verification (pH, COD, ammonia, nitrites, nitrates)
-- Biological treatment testing on liquid waste
-- Management of disposal facilities relationships
-
-05/2016-11/2017: Environmental Engineer, [COMPANY_NAME2]
-- Environmental quality documentation
-- Waste documentation and management
-- Relationships with disposal facilities
-
-08/2015-11/2015: Lab Technician, [UNIVERSITY_NAME]
-- Water quality parameter determination (TOC, TN, BOD, ammonia, phosphates)
-- Constructed wetland systems design and operation
-- Emerging contaminants analysis via spectrophotometry
-
-SKILLS:
-- Water treatment analysis and design
-- Waste management
-- Environmental impact assessment
-- Laboratory analysis
-- Software: QGis, AutoCAD, ArcGIS, MATLAB
-
-PUBLICATIONS:
-Co-author: "Research on emerging organic contaminants in a hybrid constructed wetland system"
-    """
-
-    # Esempio domanda BUONA (alta qualità STAR/BEI)
-    question_good = Question(
-        text="""Nella tua tesi su 'Monitoraggio delle prestazioni di un impianto di fitodepurazione,' 
-hai dimostrato competenze analitiche e di campo notevoli. Puoi raccontarci un'insight chiave o una 
-sfida che hai affrontato durante quel progetto — e come hai applicato le tue conoscenze tecniche 
-per risolverla? In che modo questa esperienza potrebbe tradursi in un miglioramento dell'efficienza 
-dei trattamenti nel contesto della sostenibilità industriale?"""
-    )
-
-    # Esempio domanda MEDIOCRE (generica, poco STAR/BEI)
-    question_mediocre = Question(
-        text="Quali sono le tue principali competenze nell'ambito della sostenibilità ambientale?"
-    )
-
+    question_groups = extract_question_groups(text)
     # API KEY (sostituisci con la tua)
     api_key = "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"
 
     # Inizializza evaluator
     print("\n[INIT] Initializing evaluator...")
     evaluator = STARBEIEvaluator(api_key=api_key)
+    final_report = []
+    print("\n" + "=" * 30)
+    print("TESTING GENERATED QUESTIONS")
+    print("=" * 30)
+    for group_index, group in enumerate(question_groups, start=1):
+        # print(f"\n=== TESTING GROUP {group_index} ===")
+        cv_content, job_description = get_context_data_for_question_group(
+            group_index,
+        )
 
-    # Valuta domanda BUONA
-    print("\n" + "="*80)
-    print("TEST 1: HIGH-QUALITY QUESTION")
-    print("="*80)
-    result_good = evaluator.evaluate(
-        question=question_good,
-        cv_content=cv_content,
-        job_description=job_description
-    )
-    print_evaluation_report(result_good, detailed=True)
+        for q in group:
+            eval_result = evaluator.evaluate(
+                question=Question(text=q),
+                cv_content=cv_content,
+                job_description=job_description
+            )
 
-    # Valuta domanda MEDIOCRE
-    print("\n" + "="*80)
-    print("TEST 2: GENERIC QUESTION")
-    print("="*80)
-    result_mediocre = evaluator.evaluate(
-        question=question_mediocre,
-        cv_content=cv_content,
-        job_description=job_description
-    )
-    print_evaluation_report(result_mediocre, detailed=True)
+            #print_evaluation_report(eval_result, detailed=True)
+            final_report.append(eval_result)
 
     # Report aggregato
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("AGGREGATE REPORT")
-    print("="*80)
-    results = [result_good, result_mediocre]
-    aggregate_report = generate_aggregate_report(results)
+    print("=" * 80)
+    aggregate_report = generate_aggregate_report(final_report)
     print_aggregate_report(aggregate_report)
 
     print("\nEvaluation completed.")

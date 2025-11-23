@@ -1,0 +1,59 @@
+**1.**
+*“In your current role as an Environmental Engineer, you frequently verify parameters like COD, ammonia, and nitrates in wastewater. Can you describe a time when your lab analysis identified a critical issue that required immediate corrective action — and how you communicated it to stakeholders (e.g., plant operators, regulators, or management)? What was the outcome?”*
+→ *Purpose:* Assesses technical proficiency, communication under pressure, and real-world problem-solving in regulatory contexts.
+
+---
+
+**2.**
+*“Your thesis focused on ‘Monitoring the performance of a phytodepurative system.’ Given your background in both lab analysis and GIS (ArcGIS, QGIS), how have you applied spatial modeling or environmental mapping to evaluate or optimize water treatment processes in your professional work? Can you share a specific example?”*
+→ *Purpose:* Evaluates integration of theoretical knowledge with technical tools (GIS), innovation, and application of academic research in practical settings.
+
+---
+
+**3.**
+*“You’ve worked with both Sistri documentation and waste disposal permits — areas requiring strict compliance. Tell me about a time you had to resolve a discrepancy or non-compliance issue with a waste transporter or disposal facility. What steps did you take, and how did you ensure the problem was fully resolved?”*
+→ *Purpose:* Probes regulatory knowledge, attention to detail, and conflict-resolution skills in high-stakes compliance environments.
+
+---
+
+**4.**
+*“You’ve worked with emerging contaminants and advanced lab techniques (like spectrophotometry) in university and professional roles. How do you stay current with evolving regulations or scientific methods in environmental monitoring? Can you share a recent technical challenge you overcame using new or updated protocols?”*
+→ *Purpose:* Assesses self-motivated learning, technical adaptability, and commitment to professional development — key traits for continuous improvement in environmental science.
+
+---
+
+**5.**
+*“You describe yourself as flexible, organized, and resilient under stress — especially in dynamic environments. Describe a project where you had to rapidly adapt to changing priorities or unexpected field/lab results. How did you manage your time and team to ensure project goals were met?”*
+→ *Purpose:* Measures soft skills, organizational agility, and leadership in fast-paced or uncertain situations — critical for project-based environmental engineering roles.
+
+---
+
+**1.**
+*“You’ve transitioned from military aviation operations to commercial trucking — what key leadership or safety principles from your time as an Aviation Machinist Mate have you carried forward into your current role as an Automobile Transporter?”*
+→ *Purpose: Explores transferable skills, adaptability, and how her military discipline shapes her current safety and operational approach.*
+
+---
+
+**2.**
+*“Your CV highlights both hands-on mechanics and financial/audit experience — how have you balanced technical troubleshooting (e.g., hydraulic systems) with administrative accountability (e.g., bill of lading verification, expense tracking) in high-pressure delivery environments?”*
+→ *Purpose: Assesses her ability to integrate diverse skill sets, prioritize under pressure, and maintain compliance across operational and documentation domains.*
+
+---
+
+**3.**
+*“You’ve managed teams and trained new drivers — can you describe a time when you had to coach or lead a less-experienced driver during a high-stakes delivery? What was the outcome, and what did you learn from it?”*
+→ *Purpose: Evaluates leadership style, mentoring effectiveness, and real-world team dynamics — especially relevant for her “exceptional leader” self-description.*
+
+---
+
+**4.**
+*“With over 8 years of experience developing and executing maintenance programs, how have you adapted those strategies to ensure fleet readiness while also meeting tight delivery schedules and regulatory deadlines?”*
+→ *Purpose: Probes her operational planning, prioritization, and ability to balance maintenance with logistics — critical for a role requiring both technical and scheduling excellence.*
+
+---
+
+**5.**
+*“You hold a TWIC card and have deep experience with OSHA, FAA, and DOT compliance — how do you proactively stay ahead of regulatory changes in a field where rules evolve frequently?”*
+→ *Purpose: Tests her awareness of regulatory compliance, continuous learning, and risk mitigation — essential for long-term safety and operational integrity in transportation.*
+
+---
