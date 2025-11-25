@@ -277,30 +277,42 @@ class STARBEIEvaluator:
         Returns:
             EvaluationResult con valutazione completa
         """
-        print(f"\n[EVALUATING] Question: '{question.text[:80]}...'")
 
-        # Crea il prompt completo per valutazione
-        prompt = self._build_evaluation_prompt(
-            question.text,
-            cv_content,
-            job_description,
-            jd_competencies
-        )
 
-        # Chiamata all'LLM
-        print("   [PROCESSING] LLM call in progress...")
-        response = self.llm.chat(prompt)
+        max_iter = 3
+        i = 0
+        while i < max_iter:
+            print(f"\n[EVALUATING] Question: '{question.text[:80]}...'")
 
-        # Parse della risposta
-        print("   [PARSING] Processing results...")
-        evaluation_data = self._parse_response(response)
+            # Crea il prompt completo per valutazione
+            prompt = self._build_evaluation_prompt(
+                question.text,
+                cv_content,
+                job_description,
+                jd_competencies
+            )
 
-        # Costruisci risultato strutturato
-        result = self._build_result(question, evaluation_data)
+            # Chiamata all'LLM
+            print("   [PROCESSING] LLM call in progress...")
+            response = self.llm.chat(prompt)
 
-        print(f"   [COMPLETE] Evaluation completed - Score: {result.overall_assessment.final_score:.2f}/5")
+            # Parse della risposta
+            print("   [PARSING] Processing results...")
+            try:
+                evaluation_data = self._parse_response(response)
 
-        return result
+                # Costruisci risultato strutturato
+                result = self._build_result(question, evaluation_data)
+
+                print(f"   [COMPLETE] Evaluation completed - Score: {result.overall_assessment.final_score:.2f}/5")
+
+                return result
+            except Exception as e:
+                print("    [ERROR] Evaluation failed, retrying... ")
+                print(f"    [INFO] Iteration {i}")
+                i += 1
+
+
 
     def _build_evaluation_prompt(
             self,
@@ -314,8 +326,8 @@ class STARBEIEvaluator:
         """
 
         # Limita lunghezza per evitare token eccessivi
-        cv_excerpt = cv[:3000] if len(cv) > 3000 else cv
-        jd_excerpt = jd[:2000] if len(jd) > 2000 else jd
+        #cv_excerpt = cv[:3000] if len(cv) > 3000 else cv
+        #jd_excerpt = jd[:2000] if len(jd) > 2000 else jd
 
         competencies_text = ""
         if jd_competencies:
@@ -327,10 +339,10 @@ DOMANDA DA VALUTARE:
 "{question_text}"
 
 JOB DESCRIPTION (estratto):
-{jd_excerpt}{competencies_text}
+{jd}{competencies_text}
 
 CV CANDIDATO (estratto):
-{cv_excerpt}
+{cv}
 
 ---
 
@@ -651,7 +663,67 @@ IMPORTANTE:
         except Exception as e:
             print("[ERROR] Building EvaluationResult failed: {e}")
             print("skipping result construction...")
-            pass
+            return EvaluationResult(
+                question=question,
+                star_compliance=STARCompliance(
+                    situation_present=False,
+                    situation_quality=0,
+                    situation_rationale="N/A",
+                    task_present=False,
+                    task_quality=0,
+                    task_rationale="N/A",
+                    action_present=False,
+                    action_quality=0,
+                    action_rationale="N/A",
+                    result_present=False,
+                    result_quality=0,
+                    result_rationale="N/A",
+                    star_score=0.0,
+                    components_present_count=0
+                ),
+                bei_compliance=BEICompliance(
+                    past_behavior_focus=0,
+                    past_behavior_rationale="N/A",
+                    specificity=0,
+                    specificity_rationale="N/A",
+                    probing_depth=0,
+                    probing_depth_rationale="N/A",
+                    job_relevance=0,
+                    job_relevance_rationale="N/A",
+                    bei_score=0.0
+                ),
+                personalization=PersonalizationMetrics(
+                    integration_score=0,
+                    integration_rationale="N/A",
+                    entities_mentioned=[],
+                    entities_count=0,
+                    biographical_references=0,
+                    has_specific_references=False
+                ),
+                relevance_verification=RelevanceVerification(
+                    cv_references_found=False,
+                    cv_specific_mentions=[],
+                    cv_reference_quality="N/A",
+                    jd_references_found=False,
+                    jd_competencies_mentioned=[],
+                    jd_reference_quality="N/A",
+                    is_well_grounded=False,
+                    grounding_rationale="N/A"
+                ),
+                overall_assessment=OverallAssessment(
+                    star_score=0.0,
+                    bei_score=0.0,
+                    personalization_score=0,
+                    final_score=0.0,
+                    quality_category="fallback",
+                    meets_star_standard=False,
+                    meets_bei_standard=False,
+                    meets_both_standards=False,
+                    strengths=[],
+                    weaknesses=[],
+                    improvement_suggestions=""
+                )
+            )
 
 
 
@@ -994,8 +1066,13 @@ def get_context_data_for_question_group(question_group) -> List[str]:
     db_repo: DatabaseRepository = initialize_database()
     cv_cont = []
     job_descript = []
-    email = "mario.rossi@example.com" if question_group == 1 else "sofia.verdi@example.com"
-    # email = "sofia.verdi@example.com"
+    emails = ["mario.rossi@example.com", "sofia.verdi@example.com",
+              "federica.lombardi@example.com", "simone.rizzo@example.com",
+              "francesca.ricci@example.com", "giorgia.romano@example.com"]
+    try:
+        email = emails[question_group - 1]
+    except Exception:
+        raise
     if db_repo:
         try:
             user_data = db_repo.get_user_data_by_email(email)
@@ -1049,9 +1126,13 @@ if __name__ == "__main__":
     print("=" * 30)
     for group_index, group in enumerate(question_groups, start=1):
         # print(f"\n=== TESTING GROUP {group_index} ===")
-        cv_content, job_description = get_context_data_for_question_group(
-            group_index,
-        )
+        try:
+            cv_content, job_description = get_context_data_for_question_group(
+                group_index,
+            )
+        except Exception as e:
+            # print(f"[ERROR] Could not get context data for group {group_index}: {e}")
+            continue
 
         for q in group:
             eval_result = evaluator.evaluate(
