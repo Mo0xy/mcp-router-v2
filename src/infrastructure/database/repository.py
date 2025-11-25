@@ -232,3 +232,24 @@ class DatabaseRepository:
         """
         return self.db_manager.test_connection()
 
+
+if __name__ == "__main__":
+
+    try:
+
+        db_manager = DatabaseConnectionManager()
+        db_repo = DatabaseRepository(db_manager)
+        db_manager.initialize_pool()
+
+        # Test connection
+        if db_repo.health_check():
+            logger.info("✓ Database connected successfully")
+        else:
+            logger.error("✗ Database health check failed")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
+
+    rslt = db_repo.get_user_data_by_email("andrea.costa@example.com")
+    print(rslt)

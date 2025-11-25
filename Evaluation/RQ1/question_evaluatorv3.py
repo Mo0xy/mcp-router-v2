@@ -21,7 +21,6 @@ from dataclasses import dataclass, asdict
 import numpy as np
 from src.infrastructure.database.connection import get_db_manager
 from src.infrastructure.database.repository import DatabaseRepository
-from src.shared.exceptions import DatabaseError
 
 
 # =============================================================================
