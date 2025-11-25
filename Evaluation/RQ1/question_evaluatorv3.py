@@ -1114,7 +1114,7 @@ if __name__ == "__main__":
 
     question_groups = extract_question_groups(text)
     # API KEY (sostituisci con la tua)
-    api_key = "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"
+    api_key = "yourAPIkey"
 
     # Inizializza evaluator
     print("\n[INIT] Initializing evaluator...")
